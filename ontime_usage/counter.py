@@ -343,24 +343,34 @@ def total(*, period: str | None = None, database: str | None = None) -> int:
 
 
 def ownership_warning(database: str | None = None) -> str | None:
-    """A sentence when this process could not write the counter, else None.
+    """Say it out loud when the counter is present but not writable by us.
 
-    The whole point: record() cannot raise, so an unwritable database is
-    indistinguishable from an idle one unless something asks on purpose.
+    record() swallows PermissionError, so a counter owned by the wrong user
+    stops counting and nothing says so.
+
+    THE SIDECARS MATTER AS MUCH AS THE DATABASE. Readers open `mode=ro` so they
+    cannot create the database itself, but SQLite still builds `-shm` and `-wal`
+    in order to READ a WAL file — so a reader run as another user (a test suite
+    as root, a one-off job) can leave sidecars beside a perfectly writable
+    database that the writing service then cannot use. That cannot be prevented
+    from inside a reader, so it is reported instead.
     """
-    target = Path(database or db_path())
     try:
-        if target.exists():
-            if os.access(target, os.W_OK):
-                return None
-            return (f"{target} exists but is NOT WRITABLE by this process "
-                    f"(uid {os.getuid()}) - it has silently stopped counting.")
-        parent = target.parent
-        if not parent.exists():
-            return f"{parent} does not exist - nothing can be counted."
-        if not os.access(parent, os.W_OK):
-            return (f"{parent} is not writable by this process (uid {os.getuid()}) "
-                    f"- the counter cannot be created.")
-        return None
+        path = Path(database or db_path())
+        if not path.exists():
+            parent = path.parent
+            if not parent.exists():
+                return f"{parent} does not exist - nothing can be counted."
+            if not os.access(parent, os.W_OK):
+                return (f"{parent} is not writable by this process "
+                        f"(uid {os.getuid()}) - the counter cannot be created.")
+            return None
+        unwritable = [p.name for p in (path, Path(f"{path}-wal"), Path(f"{path}-shm"))
+                      if p.exists() and not os.access(p, os.W_OK)]
+        if not unwritable:
+            return None
+        return ("counter files are NOT writable by this user: "
+                + ", ".join(unwritable)
+                + " - record() would fail silently and the count would stop")
     except Exception:                              # pragma: no cover - guard
         return None

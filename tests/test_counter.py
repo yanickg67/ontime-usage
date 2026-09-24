@@ -171,3 +171,22 @@ def test_a_fresh_database_is_v2():
     usage.record("GET", "locations", status_code=200, cred="aaa")
     assert usage.schema_version(usage.db_path()) == 2
     assert usage.SCHEMA_VERSION == 2
+
+
+def test_a_root_owned_WAL_SIDECAR_is_reported_even_when_the_db_is_writable(tmp_path, monkeypatch):
+    """The failure the extraction nearly dropped.
+
+    A reader run as another user leaves -wal/-shm beside a writable database.
+    record() then fails silently forever. Checking only the database file
+    would miss it entirely.
+    """
+    db = tmp_path / "u.db"
+    usage.record("GET", "locations", status_code=200, cred="aaa", database=str(db))
+    (tmp_path / "u.db-wal").touch()
+    real_access = os.access
+    monkeypatch.setattr(counter.os, "access",
+                        lambda p, m: False if str(p).endswith("-wal") else real_access(p, m))
+    warning = usage.ownership_warning(str(db))
+    assert warning is not None
+    assert "NOT writable" in warning
+    assert "u.db-wal" in warning
