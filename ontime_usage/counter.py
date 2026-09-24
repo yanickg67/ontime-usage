@@ -83,7 +83,9 @@ def fingerprint(secret: str | None) -> str:
     """
     if not secret:
         return "none"
-    return hashlib.sha256(secret.encode("utf-8")).hexdigest()[:12]
+    # errors="replace": this runs at startup, OUTSIDE record()'s catch-all,
+    # so a key carrying an odd byte must not be able to raise here.
+    return hashlib.sha256(secret.encode("utf-8", "replace")).hexdigest()[:12]
 
 
 def enabled() -> bool:

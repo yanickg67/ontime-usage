@@ -35,7 +35,7 @@ from .counter import (                                        # noqa: F401
     total,
 )
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 __all__ = [
     "SCHEMA_VERSION", "__version__", "configure", "counter_exists",
